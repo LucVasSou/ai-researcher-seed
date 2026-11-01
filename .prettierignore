@@ -5,5 +5,8 @@ pnpm-lock.yaml
 # Vendorizado via `npx skills add`, rastreado por hash em skills-lock.json — nunca reformatar
 .agents
 
+# Gerado pelo drizzle-kit, que reescreve os snapshots a cada `db:generate`
+**/drizzle/meta
+
 # Prosa: markdown didático e documentação, não é escopo do Prettier
 **/*.md
