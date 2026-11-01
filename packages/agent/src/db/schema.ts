@@ -61,3 +61,32 @@ export const documentos = pgTable(
     index('documentos_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
   ],
 );
+
+/**
+ * Um registro por pedaço (chunk) de página web, gravado pelo nó `webSearch`.
+ *
+ * Fica separada de `documentos` porque o formato é outro: texto livre em vez de
+ * indicadores, e com prazo de validade. Notícia envelhece; o ITR de um trimestre
+ * fechado não — por isso só esta tabela tem `expires_at`.
+ */
+export const documentosWeb = pgTable(
+  'documentos_web',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+
+    /** A query de busca que trouxe esta página — útil para entender o trace depois. */
+    query: text('query').notNull(),
+    title: text('title').notNull(),
+    content: text('content').notNull(),
+
+    sourceUrl: text('source_url').notNull(),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull(),
+    /** Depois desta data o retrieve ignora o registro. */
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+
+    embedding: vector('embedding', { dimensions: EMBEDDING_DIMENSIONS }).notNull(),
+  },
+  (table) => [
+    index('documentos_web_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
+  ],
+);

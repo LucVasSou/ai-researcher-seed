@@ -22,6 +22,7 @@ class FakeEmbeddings extends Embeddings {
 }
 
 const petr3T25: RetrievedDoc = {
+  kind: 'cvm',
   ticker: 'PETR',
   companyName: 'Petróleo Brasileiro S.A. - Petrobras',
   setor: 'Petróleo e Gás',

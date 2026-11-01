@@ -5,6 +5,7 @@ import { gradePrompt } from '../prompts/grade.js';
 import { makeGradeNode } from './grade.js';
 
 const petr3T25: RetrievedDoc = {
+  kind: 'cvm',
   ticker: 'PETR',
   companyName: 'Petróleo Brasileiro S.A. - Petrobras',
   setor: 'Petróleo e Gás',
@@ -58,6 +59,27 @@ describe('gradePrompt', () => {
     expect(human.content).toContain('Qual a receita da Petrobras no 3T25?');
     expect(human.content).toContain('PETR — 3T25');
     expect(human.content).toContain(petr3T25.paragraph);
+  });
+
+  it('identifica documentos web pelo título e pela URL', () => {
+    const [, human] = gradePrompt({
+      question: 'Por que o lucro da Petrobras caiu?',
+      documents: [
+        {
+          kind: 'web',
+          title: 'Petrobras explica queda no lucro',
+          content: 'A queda se deve ao preço do Brent...',
+          sourceUrl: 'https://exemplo.com/petrobras',
+          fetchedAt: new Date('2026-10-30T12:00:00Z'),
+          distance: 0.2,
+        },
+      ],
+    });
+
+    expect(human.content).toContain(
+      'Web — Petrobras explica queda no lucro (https://exemplo.com/petrobras)',
+    );
+    expect(human.content).toContain('A queda se deve ao preço do Brent...');
   });
 
   it('avisa o modelo quando nenhum documento foi encontrado', () => {
