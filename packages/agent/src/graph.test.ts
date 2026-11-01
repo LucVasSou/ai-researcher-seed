@@ -16,6 +16,7 @@ function grafoComFakes(respostasDoGrade: string[]) {
   const deps: GraphDeps = {
     embeddings: new FakeEmbeddings(),
     gradeLlm: new FakeListChatModel({ responses: respostasDoGrade }),
+    answerLlm: new FakeListChatModel({ responses: ['A receita foi de R$ 127,9 bilhões [1].'] }),
     searchSimilar: async () => [],
     searchProvider: {
       search: async () => [{ title: 'Notícia', snippet: '', url: 'https://exemplo.com/1' }],
@@ -40,12 +41,13 @@ async function nosVisitados(app: ReturnType<typeof buildGraph>, question: string
 }
 
 describe('grafo', () => {
-  it('vai direto ao fim quando o contexto é suficiente na primeira rodada', async () => {
+  it('vai direto ao answer quando o contexto é suficiente na primeira rodada', async () => {
     const { app, gravados } = grafoComFakes([SUFICIENTE]);
 
     expect(await nosVisitados(app, 'Qual a receita da Petrobras no 3T25?')).toEqual([
       'retrieve',
       'grade',
+      'answer',
     ]);
     expect(gravados).toEqual([]);
   });
@@ -59,6 +61,7 @@ describe('grafo', () => {
       'webSearch',
       'retrieve',
       'grade',
+      'answer',
     ]);
     expect(gravados.length).toBeGreaterThan(0);
   });
@@ -69,7 +72,8 @@ describe('grafo', () => {
     const visitados = await nosVisitados(app, 'Qual o preço-alvo da Petrobras?');
 
     expect(visitados.filter((no) => no === 'grade')).toHaveLength(MAX_ITERATIONS);
-    expect(visitados.at(-1)).toBe('grade');
+    // Estourar o limite não é erro: o grafo responde mesmo assim.
+    expect(visitados.at(-1)).toBe('answer');
   });
 
   it('acumula iterations no estado via reducer', async () => {
@@ -79,5 +83,14 @@ describe('grafo', () => {
 
     expect(final.iterations).toBe(MAX_ITERATIONS);
     expect(final.sufficient).toBe(false);
+  });
+
+  it('devolve a resposta do answer, com o bloco de fontes, no estado final', async () => {
+    const { app } = grafoComFakes([SUFICIENTE]);
+
+    const final = await app.invoke({ question: 'Qual a receita da Petrobras no 3T25?' });
+
+    expect(final.finalAnswer).toContain('A receita foi de R$ 127,9 bilhões [1].');
+    expect(final.finalAnswer).toContain('Fontes:');
   });
 });
