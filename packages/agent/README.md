@@ -119,6 +119,31 @@ A deduplicação **não é só pela URL**: no corpus CVM, a URL é o ZIP anual d
 
 O estado guarda a resposta em `finalAnswer`, e não em `answer`: o LangGraph proíbe campo de estado com o mesmo nome de um nó.
 
+## Como o grafo chega ao cliente: `POST /api/chat`
+
+A rota fica em `apps/api/src/routes/chat.ts` e transmite a execução do grafo como Server-Sent Events — **um evento por nó concluído**, não por token.
+
+```
+POST /api/chat   { "question": "Por que o lucro da PETR caiu?" }
+
+data: {"type":"retrieve","documents":[{"kind":"cvm","ticker":"PETR","period":"3T25",...}]}
+data: {"type":"grade","sufficient":false,"missingAspects":["motivo da queda"],"iterations":1}
+data: {"type":"webSearch"}
+data: {"type":"retrieve","documents":[{"kind":"web","title":"Petrobras explica queda",...}]}
+data: {"type":"grade","sufficient":true,"missingAspects":[],"iterations":2}
+data: {"type":"answer","answer":"O lucro caiu por causa do Brent [1].\n\nFontes: ..."}
+```
+
+- **Entrada:** validada pelo `chatRequestSchema` de `@hero/contracts` (`question` sem espaços nas pontas, de 1 a 1000 caracteres). Inválida → 400 em `application/problem+json`, sem chamar o grafo.
+- **Headers escritos à mão:** `Content-Type: text/event-stream`, `Cache-Control: no-cache, no-transform` e `Connection: keep-alive`. Sem o `no-transform`, o Cloud Run bufferiza a resposta inteira e ela chega de uma vez.
+- **Tradução dos eventos** (`apps/api/src/routes/chat-event.ts`): o `retrieve` vira um resumo dos documentos, sem o texto; o `grade` leva `sufficient`, `missingAspects` e `iterations`; o `webSearch` vai só com o nome, porque não produz campo de estado; o `answer` leva o texto final.
+- **`iterations` no evento é o total.** O update do `grade` traz o incremento (`1`) que o reducer soma; a rota soma os incrementos para o cliente ver a contagem real.
+- **Erro no meio do stream:** vai para o log, o cliente recebe `{"type":"error","message":...}` com mensagem genérica (sem detalhe interno), a conexão fecha e o processo segue de pé.
+- **Cancelamento:** o grafo recebe um `signal` que dispara se o cliente fechar a conexão — para não pagar LLM para ninguém — ou após 60 s.
+- **`GraphLike`:** a rota depende só de uma interface com o método `stream`. O grafo real do `buildGraph` a satisfaz (conferido pelo compilador), e o teste usa um grafo fake de poucas linhas, sem LLM nem Postgres.
+
+A rota só é registrada quando `build()` recebe um grafo. O `index.ts` da API ainda não monta um — ver pendências.
+
 ## Testes
 
 ```bash
@@ -151,8 +176,9 @@ Variáveis de ambiente usadas pelo pacote: `DATABASE_URL`, `MODEL_EMBEDDING`, `M
 
 ## Pendências conhecidas
 
-- **Migration `0002_create-documentos-web` não aplicada.** Falta rodar `pnpm db:migrate` no Postgres local e no Cloud SQL.
-- **Ninguém monta o grafo com clientes reais ainda.** O `GraphDeps` com Vertex, Postgres e provedor de busca entra com a rota `POST /chat` (D.10).
+- **Migration `0002_create-documentos-web` não aplicada no Cloud SQL.** No Postgres local do `docker-compose` as três migrations já rodaram. Para o Cloud SQL falta autenticação no Google Cloud (gcloud + `cloud-sql-proxy`) ou um passo de migration no `deploy.yml`.
+- **O `/api/chat` ainda não está ligado em produção.** A rota existe e está testada, mas o `index.ts` da API não monta o grafo com clientes reais (Vertex, Postgres, provedor de busca). Para isso, `apps/api` precisa depender de `@hero/agent`, e o pacote do agente precisa de `exports` e build para `dist`, como o `contracts` — além das variáveis `MODEL_*` e da chave de busca no Cloud Run.
+- **`ChatEvent` mora em `apps/api`.** Quando o Angular consumir o stream, o tipo deve ir para `@hero/contracts`, para os dois lados compartilharem o mesmo contrato.
 - **Duplicatas em `documentos_web`.** Não há índice único: se a mesma pergunta passar duas vezes pelo `webSearch`, as mesmas páginas são gravadas de novo e os chunks repetidos podem ocupar o top-k. Uma opção é índice único em (`source_url`, posição do chunk) com upsert.
 - **Sem limite de chunks por página.** Uma página de 50 mil caracteres gera uns 55 chunks, e o `embedDocuments` dispara uma chamada à Vertex por chunk, todas em paralelo — o problema que o seed resolveu com lotes de 10.
 - **A regra qualitativa do `grade` não é provada pelos testes.** O fake só mostra que o nó repassa o que o LLM diz; se o modelo real obedece ao prompt se mede contra o `evals/dataset.json`.
