@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SearchProviderError, type SearchProvider } from './search-provider.js';
+import { SEARCH_TIMEOUT_MS, SearchProviderError, type SearchProvider } from './search-provider.js';
 
 const GOOGLE_CUSTOM_SEARCH_URL = 'https://www.googleapis.com/customsearch/v1';
 
@@ -28,7 +28,7 @@ export function makeGoogleCustomSearchProvider(apiKey: string, cx: string): Sear
       url.searchParams.set('cx', cx);
       url.searchParams.set('q', query);
 
-      const resposta = await fetch(url);
+      const resposta = await fetch(url, { signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS) });
       if (!resposta.ok) {
         throw new SearchProviderError('Google Custom Search', `HTTP ${resposta.status}`);
       }

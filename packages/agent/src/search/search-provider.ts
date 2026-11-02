@@ -1,3 +1,9 @@
+/**
+ * Uma busca que demora mais que isso é tratada como falha. Sem esse limite, uma API
+ * travada deixaria o fetch esperando para sempre — e o grafo junto.
+ */
+export const SEARCH_TIMEOUT_MS = 10_000;
+
 /** Um resultado de busca web, no formato comum a todos os provedores. */
 export type SearchResult = {
   title: string;

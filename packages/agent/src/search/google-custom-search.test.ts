@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeGoogleCustomSearchProvider } from './google-custom-search.js';
-import { SearchProviderError } from './search-provider.js';
+import { SEARCH_TIMEOUT_MS, SearchProviderError } from './search-provider.js';
 
 /** Troca o fetch global por um fake que devolve sempre a mesma resposta. */
 function stubFetch(corpo: unknown, status = 200) {
-  const fetchFake = vi.fn<(url: URL) => Promise<Response>>(async () =>
+  const fetchFake = vi.fn<(url: URL, init?: RequestInit) => Promise<Response>>(async () =>
     Response.json(corpo, { status }),
   );
   vi.stubGlobal('fetch', fetchFake);
@@ -13,6 +13,7 @@ function stubFetch(corpo: unknown, status = 200) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('makeGoogleCustomSearchProvider', () => {
@@ -26,6 +27,16 @@ describe('makeGoogleCustomSearchProvider', () => {
     expect(url.searchParams.get('key')).toBe('chave-teste');
     expect(url.searchParams.get('cx')).toBe('cx-teste');
     expect(url.searchParams.get('q')).toBe('lucro Petrobras 3T25');
+  });
+
+  it('passa ao fetch um AbortSignal de 10 segundos, que é o que aplica o timeout', async () => {
+    const fetchFake = stubFetch({});
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+
+    await makeGoogleCustomSearchProvider('chave-teste', 'cx-teste').search('qualquer');
+
+    expect(timeout).toHaveBeenCalledWith(SEARCH_TIMEOUT_MS);
+    expect(fetchFake.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it('mapeia items[] para SearchResult[]', async () => {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SearchProviderError } from './search-provider.js';
+import { SEARCH_TIMEOUT_MS, SearchProviderError } from './search-provider.js';
 import { makeSerperProvider } from './serper.js';
 
 /** Troca o fetch global por um fake que devolve sempre a mesma resposta. */
@@ -11,6 +11,7 @@ function stubFetch(corpo: unknown, status = 200) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('makeSerperProvider', () => {
@@ -23,7 +24,18 @@ describe('makeSerperProvider', () => {
       method: 'POST',
       headers: { 'X-API-KEY': 'chave-teste', 'Content-Type': 'application/json' },
       body: JSON.stringify({ q: 'lucro Petrobras 3T25' }),
+      signal: expect.any(AbortSignal),
     });
+  });
+
+  it('passa ao fetch um AbortSignal de 10 segundos, que é o que aplica o timeout', async () => {
+    stubFetch({ organic: [] });
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+
+    await makeSerperProvider('chave-teste').search('qualquer');
+
+    expect(timeout).toHaveBeenCalledWith(SEARCH_TIMEOUT_MS);
+    expect(SEARCH_TIMEOUT_MS).toBe(10_000);
   });
 
   it('mapeia organic[] para SearchResult[]', async () => {

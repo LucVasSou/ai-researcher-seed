@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SearchProviderError, type SearchProvider } from './search-provider.js';
+import { SEARCH_TIMEOUT_MS, SearchProviderError, type SearchProvider } from './search-provider.js';
 
 const SERPER_URL = 'https://google.serper.dev/search';
 
@@ -26,6 +26,7 @@ export function makeSerperProvider(apiKey: string): SearchProvider {
         method: 'POST',
         headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
         body: JSON.stringify({ q: query }),
+        signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
       });
       if (!resposta.ok) {
         throw new SearchProviderError('Serper', `HTTP ${resposta.status}`);
