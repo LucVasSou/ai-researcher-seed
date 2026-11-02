@@ -48,6 +48,11 @@ src/
     fetch-page.ts       baixa o HTML de uma URL, com timeout de 10 s
     extract-text.ts     HTML → texto corrido (regex, sem parser de DOM)
     chunk-text.ts       chunks de 1000 caracteres com sobreposição de 100
+    criar-fetch-page.ts criarFetchPage(): fetchPage real ou o das fixtures (DEMO)
+  demo/
+    fixtures.ts         resultados de busca + HTML congelados (Vale, Petrobras, Klabin)
+    demo-search-provider.ts  SearchProvider que responde das fixtures
+    demo-fetch-page.ts  fetchPage que responde das fixtures
   db/
     schema.ts           tabelas documentos (corpus CVM) e documentos_web
     client.ts           criarDb(DATABASE_URL)
@@ -90,6 +95,14 @@ Cada item de `missingAspects` é escrito como termo de busca, porque é o que o 
 | `google` | `GOOGLE_CUSTOM_SEARCH_API_KEY`, `GOOGLE_CUSTOM_SEARCH_CX` |
 
 `criarSearchProvider()` confere as variáveis antes de qualquer busca e lança `SearchConfigError` citando a que falta. A resposta de cada provedor é validada com zod; busca sem resultado vira lista vazia, e qualquer outro desvio vira `SearchProviderError`.
+
+### Modo demo (`DEMO=true`)
+
+Para gravar o fallback de busca web sem depender do Serper no ar. Com `DEMO=true`, `criarSearchProvider()` devolve um provedor que responde das fixtures de `src/demo/fixtures.ts`, e `criarFetchPage()` devolve um `fetchPage` que entrega o HTML das mesmas fixtures — nenhuma chave de busca é exigida e nenhuma requisição sai para a web. `grade`, `answer` e os embeddings continuam na Vertex AI de verdade, e as páginas da fixture são gravadas em `documentos_web` como qualquer outra.
+
+Cada fábrica lê `DEMO` uma vez e é o único lugar que lê para aquela dependência; `serper.ts`, `google-custom-search.ts` e `fetch-page.ts` não sabem que o modo existe.
+
+A fixture é escolhida por substring do ticker ou do nome da empresa na query, sem diferenciar maiúscula de minúscula. Cobre as perguntas B01, B02 (Vale), B03 (Petrobras) e B05 (Klabin) do `evals/dataset.json`; qualquer outra cai numa fixture genérica que diz não ter resultado — nunca lança erro. O conteúdo é escrito para a demonstração: as URLs ficam no domínio reservado `demo.invalid` e os títulos começam com `[DEMO]`, para a citação na resposta deixar claro que a fonte não é real.
 
 ### `webSearch`
 
@@ -168,7 +181,7 @@ pnpm seed           # popula documentos a partir dos JSONs do corpus
 pnpm --filter @hero/agent run db:generate   # gera migration a partir do schema.ts
 ```
 
-Variáveis de ambiente usadas pelo pacote: `DATABASE_URL`, `MODEL_EMBEDDING`, `MODEL_GRADE`, `MODEL_ANSWER`, `SEARCH_PROVIDER` e as chaves do provedor de busca (tabela acima). Nenhuma delas vai para arquivo versionado; em produção, vêm do Secret Manager.
+Variáveis de ambiente usadas pelo pacote: `DATABASE_URL`, `MODEL_EMBEDDING`, `MODEL_GRADE`, `MODEL_ANSWER`, `SEARCH_PROVIDER` e as chaves do provedor de busca (tabela acima), e `DEMO` (opcional, `true` liga o modo demo). Nenhuma delas vai para arquivo versionado; em produção, vêm do Secret Manager.
 
 ## Dependências e versões
 
@@ -182,4 +195,5 @@ Variáveis de ambiente usadas pelo pacote: `DATABASE_URL`, `MODEL_EMBEDDING`, `M
 - **Duplicatas em `documentos_web`.** Não há índice único: se a mesma pergunta passar duas vezes pelo `webSearch`, as mesmas páginas são gravadas de novo e os chunks repetidos podem ocupar o top-k. Uma opção é índice único em (`source_url`, posição do chunk) com upsert.
 - **Sem limite de chunks por página.** Uma página de 50 mil caracteres gera uns 55 chunks, e o `embedDocuments` dispara uma chamada à Vertex por chunk, todas em paralelo — o problema que o seed resolveu com lotes de 10.
 - **A regra qualitativa do `grade` não é provada pelos testes.** O fake só mostra que o nó repassa o que o LLM diz; se o modelo real obedece ao prompt se mede contra o `evals/dataset.json`.
+- **Páginas do modo demo ficam em `documentos_web`.** Depois de uma gravação com `DEMO=true`, os chunks com `source_url` em `https://demo.invalid/` continuam recuperáveis por até 7 dias (TTL), também fora do modo demo. Apague-os antes de voltar ao uso normal no mesmo banco.
 - **Sem `.env.example`.** As variáveis estão documentadas aqui e nos comentários do código; as chaves de busca ainda precisam entrar no Secret Manager e no deploy do Cloud Run.

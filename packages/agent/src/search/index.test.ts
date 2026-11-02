@@ -10,6 +10,7 @@ function stubFetch() {
 
 /** Zera todas as variáveis que a fábrica lê, para o ambiente da máquina não vazar no teste. */
 function limparAmbiente() {
+  vi.stubEnv('DEMO', '');
   vi.stubEnv('SEARCH_PROVIDER', '');
   vi.stubEnv('SERPER_API_KEY', '');
   vi.stubEnv('GOOGLE_CUSTOM_SEARCH_API_KEY', '');
@@ -57,6 +58,17 @@ describe('criarSearchProvider', () => {
     vi.stubEnv('GOOGLE_CUSTOM_SEARCH_API_KEY', 'chave-google');
 
     expect(() => criarSearchProvider()).toThrow(/GOOGLE_CUSTOM_SEARCH_CX/);
+  });
+
+  it('com DEMO=true responde das fixtures, sem chave e sem rede', async () => {
+    limparAmbiente();
+    vi.stubEnv('DEMO', 'true');
+    const fetchFake = stubFetch();
+
+    const resultados = await criarSearchProvider().search('Por que a receita da Vale caiu?');
+
+    expect(fetchFake).not.toHaveBeenCalled();
+    expect(resultados[0].url).toContain('demo.invalid/vale/');
   });
 
   it('lança SearchConfigError para provedor desconhecido', () => {

@@ -1,3 +1,4 @@
+import { makeDemoSearchProvider } from '../demo/demo-search-provider.js';
 import { makeGoogleCustomSearchProvider } from './google-custom-search.js';
 import { SearchConfigError, type SearchProvider } from './search-provider.js';
 import { makeSerperProvider } from './serper.js';
@@ -23,8 +24,15 @@ function exigirVariavel(nome: string): string {
  *
  * - serper: SERPER_API_KEY
  * - google: GOOGLE_CUSTOM_SEARCH_API_KEY e GOOGLE_CUSTOM_SEARCH_CX
+ *
+ * Com DEMO=true, nenhuma das duas: as buscas respondem das fixtures de src/demo,
+ * e nenhuma chave é exigida. É o único lugar que lê DEMO para a busca.
  */
 export function criarSearchProvider(): SearchProvider {
+  if (process.env.DEMO === 'true') {
+    return makeDemoSearchProvider();
+  }
+
   const provider = process.env.SEARCH_PROVIDER || 'serper';
 
   if (provider === 'serper') {
