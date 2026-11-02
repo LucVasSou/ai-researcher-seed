@@ -16,10 +16,25 @@ A descrição da tool (`DESCRICAO_PERGUNTAR`, em `src/server.ts`) não é docume
 
 ```
 src/
+  index.ts        superfície pública (a única em `exports`): criarServidor, mcpHttpPlugin, tipos
   server.ts       criarServidor(getGraph): o McpServer com a tool, sem transporte
-  stdio.ts        ponto de entrada stdio: criarServidor(obterGrafoReal) + StdioServerTransport
-  server.test.ts  cliente MCP real ↔ servidor real, via InMemoryTransport do SDK
+  http-plugin.ts  mcpHttpPlugin: POST /mcp via Streamable HTTP, stateless
+  stdio.ts        processo: criarServidor(obterGrafoReal) + StdioServerTransport
+  http.ts         processo: Fastify standalone com o mcpHttpPlugin, app.listen()
 ```
+
+**Biblioteca separada de processo.** `stdio.ts` e `http.ts` têm efeito colateral ao rodar (conectam no stdin, abrem porta) e não são importados por ninguém: `exports` do `package.json` só expõe `index.ts`. Importar `@hero/mcp-server` como biblioteca nunca dispara nenhum dos dois; `src/index.test.ts` garante isso.
+
+## Transportes
+
+| | Onde | Para quem |
+|---|---|---|
+| stdio | `node dist/stdio.js` | Claude Code, Claude Desktop (`claude mcp add`) |
+| Streamable HTTP standalone | `http://127.0.0.1:${MCP_HTTP_PORT}/mcp` (padrão 3100) | cliente MCP local via HTTP |
+
+O HTTP é o `mcpHttpPlugin`, um plugin Fastify que pode ser registrado em mais de um servidor. Ele é **stateless**: cada `POST` cria um `McpServer` e um transporte novos, que morrem com a resposta; nenhuma sessão fica em memória, e `GET`/`DELETE` respondem 405 com `Allow: POST`. A resposta é JSON (`enableJsonResponse`), não SSE — a tool devolve um resultado só, e JSON passa sem surpresa por qualquer proxy. O que dura entre requisições é o grafo, que vem do `getGraph`.
+
+O standalone escuta só em `127.0.0.1`: é para um cliente MCP na mesma máquina.
 
 O grafo chega por parâmetro (`GetGraph`), como no resto do projeto. O teste passa um fake e exercita o protocolo inteiro — `initialize`, `tools/list`, `tools/call` — sem Postgres, sem Vertex AI e sem processo filho.
 
@@ -39,6 +54,7 @@ Variáveis de ambiente, as mesmas do `@hero/agent`: `DATABASE_URL`, `MODEL_EMBED
 ## Comandos
 
 ```bash
-pnpm --filter @hero/mcp-server test    # testes com InMemoryTransport
-pnpm --filter @hero/mcp-server dev     # sobe o stdio via tsx (para depurar com um cliente MCP)
+pnpm --filter @hero/mcp-server test      # InMemoryTransport (servidor) e inject do Fastify (plugin HTTP)
+pnpm --filter @hero/mcp-server dev       # sobe o stdio via tsx (para depurar com um cliente MCP)
+pnpm --filter @hero/mcp-server dev:http  # sobe o HTTP standalone via tsx, em MCP_HTTP_PORT (3100)
 ```
