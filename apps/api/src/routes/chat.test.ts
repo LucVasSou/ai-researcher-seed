@@ -185,7 +185,23 @@ describe('POST /api/chat', () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.headers['content-type']).toContain('application/problem+json');
-    expect(response.json()).toMatchObject({ title: 'Requisição inválida', status: 400 });
+    expect(response.json()).toMatchObject({ title: 'Bad Request', status: 400 });
+    expect(chamadas).toEqual([]);
+  });
+
+  it('responde 400 em problem+json quando o corpo nem é JSON válido', async () => {
+    const { graph, chamadas } = fakeGraph([]);
+    const app = build({ graph });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/chat',
+      headers: { 'content-type': 'application/json' },
+      payload: '{"question": ',
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.headers['content-type']).toContain('application/problem+json');
     expect(chamadas).toEqual([]);
   });
 

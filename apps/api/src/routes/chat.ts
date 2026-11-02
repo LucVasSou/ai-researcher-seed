@@ -30,18 +30,8 @@ function writeEvent(raw: ServerResponse, event: ChatEvent): void {
 
 const chatRoute: FastifyPluginAsync<ChatRouteOptions> = async (app, { graph }) => {
   app.post('/chat', async (request, reply) => {
-    const body = chatRequestSchema.safeParse(request.body);
-    if (!body.success) {
-      return reply
-        .code(400)
-        .type('application/problem+json')
-        .send({
-          type: 'about:blank',
-          title: 'Requisição inválida',
-          status: 400,
-          detail: body.error.issues.map((issue) => issue.message).join('; '),
-        });
-    }
+    // Pergunta inválida lança ZodError, e o error handler central responde 400.
+    const { question } = chatRequestSchema.parse(request.body);
 
     // Daqui em diante a rota escreve direto no socket: o hijack avisa o Fastify
     // para não tentar enviar uma resposta própria depois.
@@ -69,10 +59,7 @@ const chatRoute: FastifyPluginAsync<ChatRouteOptions> = async (app, { graph }) =
 
     let iterations = 0;
     try {
-      const stream = await graph.stream(
-        { question: body.data.question },
-        { streamMode: 'updates', signal },
-      );
+      const stream = await graph.stream({ question }, { streamMode: 'updates', signal });
 
       for await (const chunk of stream) {
         for (const event of toChatEvents(chunk, iterations)) {
@@ -81,9 +68,11 @@ const chatRoute: FastifyPluginAsync<ChatRouteOptions> = async (app, { graph }) =
         }
       }
     } catch (error) {
-      // O erro vira evento para o cliente e log para nós. O detalhe interno não
-      // vai para o cliente, e nada é relançado: um grafo que falha não derruba
-      // o processo.
+      // Este é o único catch de rota que fica, e não por escolha: depois do
+      // hijack o status 200 e os headers do SSE já foram enviados, e o error
+      // handler central não tem mais como responder. O erro vira evento para o
+      // cliente e log para nós. O detalhe interno não vai para o cliente, e nada
+      // é relançado: um grafo que falha não derruba o processo.
       request.log.error(error, 'falha ao executar o grafo');
       if (!raw.destroyed) {
         writeEvent(raw, { type: 'error', message: 'Não foi possível concluir a pesquisa.' });

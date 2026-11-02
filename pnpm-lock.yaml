@@ -44,6 +44,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@hero/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
       '@hero/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -53,6 +56,9 @@ importers:
       pg:
         specifier: 8.22.0
         version: 8.22.0
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@types/pg':
         specifier: 8.21.0

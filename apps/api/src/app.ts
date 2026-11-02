@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import chatRoute, { type GraphLike } from './routes/chat.js';
 import healthRoute from './routes/health.js';
 import { checkDatabase as defaultCheckDatabase } from './db.js';
+import { errorHandler } from './error-handler.js';
 
 export interface BuildOptions {
   checkDatabase?: () => Promise<boolean>;
@@ -14,6 +15,9 @@ export interface BuildOptions {
 
 export function build({ checkDatabase = defaultCheckDatabase, graph }: BuildOptions = {}) {
   const app = Fastify({ logger: true });
+
+  // Antes das rotas: o handler vale para todo plugin registrado depois dele.
+  app.setErrorHandler(errorHandler);
 
   app.register(
     async (api) => {
