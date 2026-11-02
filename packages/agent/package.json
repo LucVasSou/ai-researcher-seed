@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./grafo-real": "./dist/grafo-real.js",
     "./search": "./dist/search/index.js"
   },
   "scripts": {

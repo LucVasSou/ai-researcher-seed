@@ -29,6 +29,9 @@ A decisão de rota mora só na aresta condicional (`routeAfterGrade`, em `src/gr
 src/
   state.ts              ResearchState: os campos que circulam entre os nós
   graph.ts              buildGraph(deps), routeAfterGrade, MAX_ITERATIONS
+  grafo-real.ts         obterGrafoReal(): o grafo com Postgres + Vertex AI, um por processo
+  llm/
+    chat-vertex.ts      criarChatVertex('MODEL_GRADE' | 'MODEL_ANSWER')
   nodes/
     retrieve.ts         pergunta → embedding → top-k documentos
     grade.ts            o contexto responde a pergunta? (saída estruturada)
@@ -198,7 +201,7 @@ Variáveis de ambiente usadas pelo pacote: `DATABASE_URL`, `MODEL_EMBEDDING`, `M
 ## Pendências conhecidas
 
 - **Migration `0002_create-documentos-web` não aplicada no Cloud SQL.** No Postgres local do `docker-compose` as três migrations já rodaram. Para o Cloud SQL falta autenticação no Google Cloud (gcloud + `cloud-sql-proxy`) ou um passo de migration no `deploy.yml`.
-- **O `/api/chat` ainda não está ligado em produção.** A rota existe e está testada, mas o `index.ts` da API não monta o grafo com clientes reais (Vertex, Postgres, provedor de busca). `apps/api` já depende de `@hero/agent`, mas o pacote só exporta `@hero/agent/search` (usado pelo error handler para reconhecer `CircuitoAbertoError`); falta exportar o `buildGraph` e as fábricas dos clientes — além das variáveis `MODEL_*` e da chave de busca no Cloud Run.
+- **O `/api/chat` ainda não está ligado em produção.** A rota existe e está testada, mas o `index.ts` da API não monta o grafo com clientes reais (Vertex, Postgres, provedor de busca). `apps/api` já depende de `@hero/agent`, e o grafo real já existe como `obterGrafoReal()` em `@hero/agent/grafo-real` (usado pelo `@hero/mcp-server`); falta o `index.ts` da API passá-lo ao `build()` — além das variáveis `MODEL_*` e da chave de busca no Cloud Run.
 - **`ChatEvent` mora em `apps/api`.** Quando o Angular consumir o stream, o tipo deve ir para `@hero/contracts`, para os dois lados compartilharem o mesmo contrato.
 - **Duplicatas em `documentos_web`.** Não há índice único: se a mesma pergunta passar duas vezes pelo `webSearch`, as mesmas páginas são gravadas de novo e os chunks repetidos podem ocupar o top-k. Uma opção é índice único em (`source_url`, posição do chunk) com upsert.
 - **Sem limite de chunks por página.** Uma página de 50 mil caracteres gera uns 55 chunks, e o `embedDocuments` dispara uma chamada à Vertex por chunk, todas em paralelo — o problema que o seed resolveu com lotes de 10.
