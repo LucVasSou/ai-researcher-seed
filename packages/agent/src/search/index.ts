@@ -1,8 +1,10 @@
 import { makeDemoSearchProvider } from '../demo/demo-search-provider.js';
+import { comResiliencia } from './com-resiliencia.js';
 import { makeGoogleCustomSearchProvider } from './google-custom-search.js';
 import { SearchConfigError, type SearchProvider } from './search-provider.js';
 import { makeSerperProvider } from './serper.js';
 
+export { CircuitoAbertoError, comResiliencia } from './com-resiliencia.js';
 export {
   SearchConfigError,
   SearchProviderError,
@@ -25,8 +27,12 @@ function exigirVariavel(nome: string): string {
  * - serper: SERPER_API_KEY
  * - google: GOOGLE_CUSTOM_SEARCH_API_KEY e GOOGLE_CUSTOM_SEARCH_CX
  *
+ * Os dois provedores reais saem envolvidos por `comResiliencia` (retry com backoff
+ * e circuit breaker).
+ *
  * Com DEMO=true, nenhuma das duas: as buscas respondem das fixtures de src/demo,
- * e nenhuma chave é exigida. É o único lugar que lê DEMO para a busca.
+ * e nenhuma chave é exigida. A fixture não passa pelo `comResiliencia` — não há
+ * rede ali para proteger. É o único lugar que lê DEMO para a busca.
  */
 export function criarSearchProvider(): SearchProvider {
   if (process.env.DEMO === 'true') {
@@ -36,13 +42,15 @@ export function criarSearchProvider(): SearchProvider {
   const provider = process.env.SEARCH_PROVIDER || 'serper';
 
   if (provider === 'serper') {
-    return makeSerperProvider(exigirVariavel('SERPER_API_KEY'));
+    return comResiliencia(makeSerperProvider(exigirVariavel('SERPER_API_KEY')));
   }
 
   if (provider === 'google') {
-    return makeGoogleCustomSearchProvider(
-      exigirVariavel('GOOGLE_CUSTOM_SEARCH_API_KEY'),
-      exigirVariavel('GOOGLE_CUSTOM_SEARCH_CX'),
+    return comResiliencia(
+      makeGoogleCustomSearchProvider(
+        exigirVariavel('GOOGLE_CUSTOM_SEARCH_API_KEY'),
+        exigirVariavel('GOOGLE_CUSTOM_SEARCH_CX'),
+      ),
     );
   }
 

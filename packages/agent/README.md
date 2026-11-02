@@ -43,6 +43,7 @@ src/
     search-provider.ts  interface SearchProvider e erros
     serper.ts           Serper (POST google.serper.dev/search)
     google-custom-search.ts  Google Custom Search (GET customsearch/v1)
+    com-resiliencia.ts  comResiliencia(): retry com backoff + circuit breaker
     index.ts            criarSearchProvider(): escolhe pelo SEARCH_PROVIDER
   web/
     fetch-page.ts       baixa o HTML de uma URL, com timeout de 10 s
@@ -95,6 +96,13 @@ Cada item de `missingAspects` é escrito como termo de busca, porque é o que o 
 | `google` | `GOOGLE_CUSTOM_SEARCH_API_KEY`, `GOOGLE_CUSTOM_SEARCH_CX` |
 
 `criarSearchProvider()` confere as variáveis antes de qualquer busca e lança `SearchConfigError` citando a que falta. A resposta de cada provedor é validada com zod; busca sem resultado vira lista vazia, e qualquer outro desvio vira `SearchProviderError`.
+
+**Resiliência.** Cada provedor real passa ao `fetch` um `AbortSignal.timeout(SEARCH_TIMEOUT_MS)` (10 s): uma API travada vira erro em vez de prender o grafo. Por cima disso, `criarSearchProvider()` envolve o provedor escolhido com `comResiliencia()` (`search/com-resiliencia.ts`), que acrescenta duas camadas sem o provedor saber:
+
+- **Retry com backoff exponencial** — até 3 tentativas, esperando 500 ms e depois 1000 ms.
+- **Circuit breaker** — 3 buscas seguidas falhando (já depois do retry) abrem o circuito; por 30 s, toda busca falha na hora com `CircuitoAbertoError`, sem chamar o provedor. Passado o resfriamento, a próxima busca é liberada: se der certo o circuito fecha, se falhar reabre.
+
+A espera entre tentativas (`esperar`) e o relógio (`agora`) entram como opção, e os testes passam versões falsas — nenhum teste espera de verdade. O provedor do modo demo não passa por essa camada: não há rede ali para proteger.
 
 ### Modo demo (`DEMO=true`)
 
@@ -195,5 +203,7 @@ Variáveis de ambiente usadas pelo pacote: `DATABASE_URL`, `MODEL_EMBEDDING`, `M
 - **Duplicatas em `documentos_web`.** Não há índice único: se a mesma pergunta passar duas vezes pelo `webSearch`, as mesmas páginas são gravadas de novo e os chunks repetidos podem ocupar o top-k. Uma opção é índice único em (`source_url`, posição do chunk) com upsert.
 - **Sem limite de chunks por página.** Uma página de 50 mil caracteres gera uns 55 chunks, e o `embedDocuments` dispara uma chamada à Vertex por chunk, todas em paralelo — o problema que o seed resolveu com lotes de 10.
 - **A regra qualitativa do `grade` não é provada pelos testes.** O fake só mostra que o nó repassa o que o LLM diz; se o modelo real obedece ao prompt se mede contra o `evals/dataset.json`.
+- **O retry repete qualquer erro, inclusive os que não passam sozinhos.** Um 401 (chave errada) ou uma resposta fora do schema também gasta as 3 tentativas e conta para o circuit breaker. Distinguir erro passageiro de permanente exigiria o `SearchProviderError` carregar o status HTTP.
+- **O pior caso de uma busca passa de 30 s.** São 3 tentativas de até 10 s cada, mais 1,5 s de backoff. O `webSearch` faz uma busca por aspecto faltante, uma depois da outra, então duas buscas travadas já estouram o timeout de 60 s do `/api/chat` antes de o circuito abrir.
 - **Páginas do modo demo ficam em `documentos_web`.** Depois de uma gravação com `DEMO=true`, os chunks com `source_url` em `https://demo.invalid/` continuam recuperáveis por até 7 dias (TTL), também fora do modo demo. Apague-os antes de voltar ao uso normal no mesmo banco.
 - **Sem `.env.example`.** As variáveis estão documentadas aqui e nos comentários do código; as chaves de busca ainda precisam entrar no Secret Manager e no deploy do Cloud Run.

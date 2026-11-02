@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { criarSearchProvider, SearchConfigError } from './index.js';
+import { DEFAULT_TENTATIVAS } from './com-resiliencia.js';
+import { criarSearchProvider, SearchConfigError, SearchProviderError } from './index.js';
 
 /** A fábrica não chama a rede, mas o provedor criado sim — o fetch fake confirma qual foi. */
 function stubFetch() {
@@ -20,6 +21,7 @@ function limparAmbiente() {
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe('criarSearchProvider', () => {
@@ -58,6 +60,22 @@ describe('criarSearchProvider', () => {
     vi.stubEnv('GOOGLE_CUSTOM_SEARCH_API_KEY', 'chave-google');
 
     expect(() => criarSearchProvider()).toThrow(/GOOGLE_CUSTOM_SEARCH_CX/);
+  });
+
+  it('envolve o provedor real com retry: um 503 é repetido antes de virar erro', async () => {
+    limparAmbiente();
+    vi.stubEnv('SERPER_API_KEY', 'chave-serper');
+    const fetchFake = vi.fn(async () => Response.json({}, { status: 503 }));
+    vi.stubGlobal('fetch', fetchFake);
+    // O backoff padrão usa setTimeout de verdade; com timers falsos o teste não espera.
+    vi.useFakeTimers();
+
+    const busca = criarSearchProvider().search('qualquer');
+    const verificacao = expect(busca).rejects.toThrow(SearchProviderError);
+    await vi.runAllTimersAsync();
+    await verificacao;
+
+    expect(fetchFake).toHaveBeenCalledTimes(DEFAULT_TENTATIVAS);
   });
 
   it('com DEMO=true responde das fixtures, sem chave e sem rede', async () => {
