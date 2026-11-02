@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { build } from '../app.js';
+import { build, type ApiGraph } from '../app.js';
 import type { GraphChunk } from './chat-event.js';
-import type { GraphLike } from './chat.js';
 
 /**
  * Grafo fake: devolve os chunks dados, na ordem, e anota com o que foi chamado.
  * Com `falhaDepois`, lança erro depois de entregar esse número de chunks.
+ * O `invoke` só existe porque o /mcp também é registrado; estes testes não o usam.
  */
 function fakeGraph(chunks: GraphChunk[], falhaDepois?: number) {
   const chamadas: { question: string; streamMode: string }[] = [];
 
-  const graph: GraphLike = {
+  const graph: ApiGraph = {
+    invoke: async () => ({ finalAnswer: '' }),
     async stream(input, options) {
       chamadas.push({ question: input.question, streamMode: options.streamMode });
       return (async function* () {
@@ -71,7 +72,7 @@ function post(app: ReturnType<typeof build>, payload: Record<string, unknown>) {
 
 describe('POST /api/chat', () => {
   it('responde como SSE, com os headers que evitam buffering no Cloud Run', async () => {
-    const app = build({ graph: fakeGraph([]).graph });
+    const app = build({ getGraph: () => fakeGraph([]).graph });
 
     const response = await post(app, { question: 'Qual a receita da PETR?' });
 
@@ -83,7 +84,7 @@ describe('POST /api/chat', () => {
 
   it('chama o grafo com a pergunta validada, em streamMode updates', async () => {
     const { graph, chamadas } = fakeGraph([]);
-    const app = build({ graph });
+    const app = build({ getGraph: () => graph });
 
     await post(app, { question: '  Qual a receita da PETR?  ' });
 
@@ -91,7 +92,7 @@ describe('POST /api/chat', () => {
   });
 
   it('emite um evento por nó concluído, traduzido para o formato do cliente', async () => {
-    const app = build({ graph: fakeGraph(loopCompleto).graph });
+    const app = build({ getGraph: () => fakeGraph(loopCompleto).graph });
 
     const response = await post(app, { question: 'Por que o lucro da PETR caiu?' });
 
@@ -142,7 +143,7 @@ describe('POST /api/chat', () => {
         ],
       },
     };
-    const app = build({ graph: fakeGraph([comTexto]).graph });
+    const app = build({ getGraph: () => fakeGraph([comTexto]).graph });
 
     const response = await post(app, { question: 'q' });
 
@@ -150,7 +151,7 @@ describe('POST /api/chat', () => {
   });
 
   it('escreve um evento de erro e encerra quando o grafo falha no meio do stream', async () => {
-    const app = build({ graph: fakeGraph(loopCompleto, 2).graph });
+    const app = build({ getGraph: () => fakeGraph(loopCompleto, 2).graph });
 
     const response = await post(app, { question: 'Por que o lucro da PETR caiu?' });
 
@@ -168,8 +169,26 @@ describe('POST /api/chat', () => {
     expect(response.body).not.toContain('Vertex fora do ar');
   });
 
+  it('escreve um evento de erro quando nem a construção do grafo dá certo', async () => {
+    const app = build({
+      getGraph: () => {
+        throw new Error('DATABASE_URL não definida.');
+      },
+    });
+
+    const response = await post(app, { question: 'Lucro da Vale?' });
+
+    expect(eventos(response.body)).toEqual([
+      { type: 'error', message: 'Não foi possível concluir a pesquisa.' },
+    ]);
+    expect(response.body).not.toContain('DATABASE_URL');
+  });
+
   it('continua atendendo depois de um grafo que falhou — o processo não cai', async () => {
-    const app = build({ graph: fakeGraph(loopCompleto, 0).graph, checkDatabase: async () => true });
+    const app = build({
+      getGraph: () => fakeGraph(loopCompleto, 0).graph,
+      checkDatabase: async () => true,
+    });
 
     await post(app, { question: 'q' });
     const health = await app.inject({ method: 'GET', url: '/api/health' });
@@ -179,7 +198,7 @@ describe('POST /api/chat', () => {
 
   it('responde 400 em problem+json quando a pergunta é inválida, sem chamar o grafo', async () => {
     const { graph, chamadas } = fakeGraph([]);
-    const app = build({ graph });
+    const app = build({ getGraph: () => graph });
 
     const response = await post(app, { question: '' });
 
@@ -191,7 +210,7 @@ describe('POST /api/chat', () => {
 
   it('responde 400 em problem+json quando o corpo nem é JSON válido', async () => {
     const { graph, chamadas } = fakeGraph([]);
-    const app = build({ graph });
+    const app = build({ getGraph: () => graph });
 
     const response = await app.inject({
       method: 'POST',

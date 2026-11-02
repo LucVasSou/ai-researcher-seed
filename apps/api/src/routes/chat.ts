@@ -21,14 +21,18 @@ export interface GraphLike {
 }
 
 export interface ChatRouteOptions {
-  graph: GraphLike;
+  /**
+   * Chamada a cada pergunta, não no registro da rota: o grafo real só é
+   * construído na primeira pergunta, e a API sobe mesmo sem as variáveis dele.
+   */
+  getGraph: () => GraphLike;
 }
 
 function writeEvent(raw: ServerResponse, event: ChatEvent): void {
   raw.write(`data: ${JSON.stringify(event)}\n\n`);
 }
 
-const chatRoute: FastifyPluginAsync<ChatRouteOptions> = async (app, { graph }) => {
+const chatRoute: FastifyPluginAsync<ChatRouteOptions> = async (app, { getGraph }) => {
   app.post('/chat', async (request, reply) => {
     // Pergunta inválida lança ZodError, e o error handler central responde 400.
     const { question } = chatRequestSchema.parse(request.body);
@@ -59,7 +63,10 @@ const chatRoute: FastifyPluginAsync<ChatRouteOptions> = async (app, { graph }) =
 
     let iterations = 0;
     try {
-      const stream = await graph.stream({ question }, { streamMode: 'updates', signal });
+      // getGraph() dentro do try: se a construção do grafo real falhar (variável
+      // de ambiente faltando), o cliente recebe o evento de erro, como em
+      // qualquer outra falha do grafo.
+      const stream = await getGraph().stream({ question }, { streamMode: 'updates', signal });
 
       for await (const chunk of stream) {
         for (const event of toChatEvents(chunk, iterations)) {

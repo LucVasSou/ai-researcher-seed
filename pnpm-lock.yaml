@@ -50,6 +50,9 @@ importers:
       '@hero/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@hero/mcp-server':
+        specifier: workspace:*
+        version: link:../../packages/mcp-server
       fastify:
         specifier: 5.11.2
         version: 5.11.2

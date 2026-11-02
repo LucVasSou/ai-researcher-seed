@@ -13,6 +13,7 @@
   "dependencies": {
     "@hero/agent": "workspace:*",
     "@hero/contracts": "workspace:*",
+    "@hero/mcp-server": "workspace:*",
     "fastify": "5.11.2",
     "pg": "8.22.0",
     "zod": "4.4.3"
