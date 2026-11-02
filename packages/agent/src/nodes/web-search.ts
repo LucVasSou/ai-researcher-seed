@@ -61,7 +61,19 @@ export function makeWebSearchNode({
     const urlsVistas = new Set<string>();
 
     for (const query of buildQueries(state.question, state.missingAspects)) {
-      const resultados = (await searchProvider.search(query))
+      // Uma busca que falha — provedor fora do ar, circuito aberto — não derruba o
+      // grafo: o corpus CVM pode bastar para responder alguma coisa. A query é
+      // pulada e o nó segue para a próxima. Se todas falharem, o nó não grava nada,
+      // o retrieve volta com o mesmo contexto e o guard de iteração encerra o loop.
+      let resultadosDaBusca: SearchResult[];
+      try {
+        resultadosDaBusca = await searchProvider.search(query);
+      } catch (erro) {
+        console.warn(`webSearch: a busca "${query}" falhou e foi pulada.`, erro);
+        continue;
+      }
+
+      const resultados = resultadosDaBusca
         .slice(0, RESULTS_PER_QUERY)
         .filter((resultado) => !urlsVistas.has(resultado.url));
       resultados.forEach((resultado) => urlsVistas.add(resultado.url));

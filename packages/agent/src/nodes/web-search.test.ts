@@ -1,5 +1,5 @@
 import { FakeEmbeddings } from '@langchain/core/utils/testing';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NewWebDocument } from '../db/save-web-documents.js';
 import type { SearchProvider, SearchResult } from '../search/index.js';
 import { buildQueries, makeWebSearchNode } from './web-search.js';
@@ -47,6 +47,10 @@ function fakeSave() {
 }
 
 const AGORA = new Date('2026-11-01T12:00:00Z');
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('buildQueries', () => {
   it('monta uma query por aspecto faltante, prefixada pela pergunta', () => {
@@ -169,6 +173,49 @@ describe('webSearch', () => {
     await webSearch({ question: 'qualquer', missingAspects: [] });
 
     expect(gravados[0].expiresAt).toEqual(new Date('2026-11-02T12:00:00Z'));
+  });
+
+  it('pula a query cuja busca falhou e segue para a próxima', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { saveWebDocuments, gravados } = fakeSave();
+    const provider: SearchProvider = {
+      async search(query) {
+        if (query.endsWith('aspecto A')) throw new Error('Serper fora do ar');
+        return [resultado(1)];
+      },
+    };
+    const webSearch = makeWebSearchNode({
+      searchProvider: provider,
+      ...fakeFetchPage({ 'https://exemplo.com/1': '<p>texto</p>' }),
+      embeddings: new FakeEmbeddings(),
+      saveWebDocuments,
+    });
+
+    await webSearch({ question: 'pergunta', missingAspects: ['aspecto A', 'aspecto B'] });
+
+    expect(gravados.map((doc) => doc.query)).toEqual(['pergunta aspecto B']);
+  });
+
+  it('não propaga o erro quando todas as buscas falham, e não grava nada', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { saveWebDocuments, gravados } = fakeSave();
+    const webSearch = makeWebSearchNode({
+      searchProvider: {
+        search: async () => {
+          throw new Error('Serper fora do ar');
+        },
+      },
+      ...fakeFetchPage({}),
+      embeddings: new FakeEmbeddings(),
+      saveWebDocuments,
+    });
+
+    const resultadoDoNo = await webSearch({ question: 'q', missingAspects: ['a', 'b'] });
+
+    expect(resultadoDoNo).toEqual({});
+    expect(gravados).toEqual([]);
+    // a falha não some em silêncio: cada query pulada deixa um aviso no log
+    expect(warn).toHaveBeenCalledTimes(2);
   });
 
   it('não grava nada quando todas as páginas falham', async () => {

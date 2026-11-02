@@ -115,7 +115,7 @@ A fixture é escolhida por substring do ticker ou do nome da empresa na query, s
 ### `webSearch`
 
 1. Monta uma query por aspecto faltante (`${question} ${aspecto}`), ou só a pergunta se não houver aspectos.
-2. Para cada query, pega os 3 primeiros resultados e pula URL que outra query já trouxe.
+2. Para cada query, pega os 3 primeiros resultados e pula URL que outra query já trouxe. Se a busca lançar erro — provedor fora do ar, `CircuitoAbertoError` —, a query é pulada com um `console.warn` e o nó segue para a próxima. Se todas falharem, o nó não grava nada: o `retrieve` volta com o mesmo contexto do corpus, o guard de iteração encerra o loop e o `answer` responde avisando que o contexto é incompleto.
 3. Baixa as páginas com `Promise.allSettled`: página fora do ar, em timeout ou que não é HTML é descartada, e as outras seguem.
 4. Extrai o texto, divide em chunks, gera os embeddings e grava um registro por chunk, com `expiresAt = fetchedAt + ttlDays`.
 
